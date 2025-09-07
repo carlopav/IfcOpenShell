@@ -106,6 +106,7 @@ classes = (
     ui.BIM_PT_drawing_underlay,
     ui.BIM_PT_schedules,
     ui.BIM_PT_references,
+    ui.BIM_PT_pointclouds,
     ui.BIM_PT_product_assignments,
     ui.BIM_PT_text,
     ui.BIM_UL_drawinglist,

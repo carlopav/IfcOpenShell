@@ -421,6 +421,53 @@ class BIM_PT_references(Panel):
             )
 
 
+class BIM_PT_pointclouds(Panel):
+    bl_label = "Pointclouds"
+    bl_idname = "BIM_PT_pointclouds"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "scene"
+    bl_parent_id = "BIM_PT_tab_pointclouds"
+    bl_options = {"HIDE_HEADER"}
+
+    def draw(self, context):
+        if not DocumentsData.is_loaded:
+            DocumentsData.load()
+
+        if not DocumentsData.data["has_saved_ifc"]:
+            draw_project_not_saved_ui(self)
+            return
+
+        self.props = tool.Drawing.get_document_props()
+
+        if not self.props.is_editing_references:
+            row = self.layout.row(align=True)
+            row.label(text=f"{DocumentsData.data['total_pointclouds']} Pointclouds Found", icon="IMAGE_REFERENCE")
+            row.operator("bim.load_pointclouds", text="", icon="IMPORT")
+            return
+
+        row = self.layout.row(align=True)
+        row.operator("bim.add_pointcloud", icon="ADD")
+        row.operator("bim.disable_editing_pointclouds", text="", icon="CANCEL")
+
+        if self.props.references:
+            if self.props.active_reference_index < len(self.props.references):
+                active_reference = self.props.references[self.props.active_reference_index]
+                row = self.layout.row(align=True)
+                row.alignment = "RIGHT"
+                row.operator("bim.open_pointcloud", icon="URL", text="").reference = active_reference.ifc_definition_id
+                row.operator("bim.remove_pointcloud", icon="X", text="").reference = active_reference.ifc_definition_id
+
+            self.layout.template_list(
+                "BIM_UL_generic",
+                "BIM_UL_generic_pointclouds",
+                self.props,
+                "references",
+                self.props,
+                "active_reference_index",
+            )
+
+
 class BIM_PT_sheets(Panel):
     bl_label = "Sheets"
     bl_idname = "BIM_PT_sheets"
