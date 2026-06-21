@@ -78,8 +78,25 @@ class RemoveCostSchedule(bpy.types.Operator, tool.Ifc.Operator):
     bl_options = {"REGISTER", "UNDO"}
     cost_schedule: bpy.props.IntProperty()
 
+    def invoke(self, context, event):
+        cost_schedule = tool.Ifc.get().by_id(self.cost_schedule)
+        if not tool.Cost.get_schedule_rate_dependents(cost_schedule):
+            return self.execute(context)
+        return context.window_manager.invoke_props_dialog(self, width=460)
+
     def _execute(self, context):
         core.remove_cost_schedule(tool.Ifc, tool.Cost, cost_schedule=tool.Ifc.get().by_id(self.cost_schedule))
+
+    def draw(self, context):
+        layout = self.layout
+        cost_schedule = tool.Ifc.get().by_id(self.cost_schedule)
+        layout.label(text="Rates in this schedule are used by other cost items:", icon="ERROR")
+        for name, count in tool.Cost.group_cost_items_by_schedule(
+            tool.Cost.get_schedule_rate_dependents(cost_schedule)
+        ):
+            layout.label(text=f"{name}: {count}", icon="DOT")
+        layout.separator()
+        layout.label(text="They will be detached and keep their current values.")
 
 
 class CopyCostSchedule(bpy.types.Operator, tool.Ifc.Operator):
@@ -215,8 +232,25 @@ class RemoveCostItem(bpy.types.Operator, tool.Ifc.Operator):
     if TYPE_CHECKING:
         cost_item: int
 
+    def invoke(self, context, event):
+        cost_item = tool.Ifc.get().by_id(self.cost_item)
+        if not tool.Cost.get_controlled_cost_items_in_subtree(cost_item):
+            return self.execute(context)
+        return context.window_manager.invoke_props_dialog(self, width=460)
+
     def _execute(self, context):
         core.remove_cost_item(tool.Ifc, tool.Cost, cost_item_id=self.cost_item)
+
+    def draw(self, context):
+        layout = self.layout
+        cost_item = tool.Ifc.get().by_id(self.cost_item)
+        layout.label(text="This cost item is used as a rate by other cost items:", icon="ERROR")
+        for name, count in tool.Cost.group_cost_items_by_schedule(
+            tool.Cost.get_controlled_cost_items_in_subtree(cost_item)
+        ):
+            layout.label(text=f"{name}: {count}", icon="DOT")
+        layout.separator()
+        layout.label(text="They will be detached and keep their current values.")
 
 
 class EnableEditingCostItem(bpy.types.Operator, tool.Ifc.Operator):
