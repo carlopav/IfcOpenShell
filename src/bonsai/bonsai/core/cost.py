@@ -215,6 +215,12 @@ def assign_cost_value(
         ifc.run("control.assign_control", relating_control=cost_rate, related_objects=[cost_item])
 
 
+def detach_cost_rate(
+    ifc: type[tool.Ifc], cost: type[tool.Cost], cost_item: ifcopenshell.entity_instance
+) -> dict[ifcopenshell.entity_instance, ifcopenshell.entity_instance]:
+    return ifc.run("cost.detach_cost_rate", cost_item=cost_item)
+
+
 def load_schedule_of_rates(cost: type[tool.Cost], schedule_of_rates: ifcopenshell.entity_instance) -> None:
     cost.load_schedule_of_rates_tree(schedule_of_rates)
 

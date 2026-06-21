@@ -35,6 +35,7 @@ from .calculate_cost_item_resource_value import calculate_cost_item_resource_val
 from .copy_cost_item import copy_cost_item
 from .copy_cost_item_values import copy_cost_item_values
 from .copy_cost_schedule import copy_cost_schedule
+from .detach_cost_rate import detach_cost_rate
 from .edit_cost_item import edit_cost_item
 from .edit_cost_item_quantity import edit_cost_item_quantity
 from .edit_cost_schedule import edit_cost_schedule
@@ -59,6 +60,7 @@ __all__ = [
     "copy_cost_item",
     "copy_cost_item_values",
     "copy_cost_schedule",
+    "detach_cost_rate",
     "edit_cost_item",
     "edit_cost_item_quantity",
     "edit_cost_schedule",

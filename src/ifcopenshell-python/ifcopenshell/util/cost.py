@@ -353,6 +353,27 @@ def get_cost_rate(
     return None
 
 
+def get_rate_dependent_cost_items(
+    cost_rate: ifcopenshell.entity_instance,
+) -> list[ifcopenshell.entity_instance]:
+    """Returns the cost items that borrow their cost values from a cost rate.
+
+    A cost item may borrow its values from a cost item in a schedule of rates
+    (see :func:`ifcopenshell.api.cost.assign_cost_value`). The navigable link
+    is an ``IfcRelAssignsToControl`` whose ``RelatingControl`` is the rate, so
+    its dependents are found by walking ``cost_rate.Controls``.
+
+    :param cost_rate: The IfcCostItem acting as a rate.
+    :return: A list of dependent IfcCostItem controlled by the rate.
+    """
+    return [
+        related_object
+        for rel in cost_rate.Controls or []
+        for related_object in rel.RelatedObjects
+        if related_object.is_a("IfcCostItem")
+    ]
+
+
 class CostValueUnserialiser:
     def parse(self, formula: str):
         l = lark.Lark(
