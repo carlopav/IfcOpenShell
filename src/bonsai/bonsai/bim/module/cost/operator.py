@@ -79,7 +79,16 @@ class RemoveCostSchedule(bpy.types.Operator, tool.Ifc.Operator):
     cost_schedule: bpy.props.IntProperty()
 
     def _execute(self, context):
-        core.remove_cost_schedule(tool.Ifc, tool.Cost, cost_schedule=tool.Ifc.get().by_id(self.cost_schedule))
+        cost_schedule = tool.Ifc.get().by_id(self.cost_schedule)
+        dependents = tool.Cost.get_schedule_rate_dependents(cost_schedule)
+        core.remove_cost_schedule(tool.Ifc, tool.Cost, cost_schedule=cost_schedule)
+        if dependents:
+            schedules = len(tool.Cost.group_cost_items_by_schedule(dependents))
+            self.report(
+                {"INFO"},
+                f"Detached {len(dependents)} cost item(s) across {schedules} schedule(s) "
+                "that used rates from this schedule; they keep their current values.",
+            )
 
 
 class CopyCostSchedule(bpy.types.Operator, tool.Ifc.Operator):
@@ -216,7 +225,16 @@ class RemoveCostItem(bpy.types.Operator, tool.Ifc.Operator):
         cost_item: int
 
     def _execute(self, context):
+        cost_item = tool.Ifc.get().by_id(self.cost_item)
+        dependents = tool.Cost.get_controlled_cost_items_in_subtree(cost_item)
         core.remove_cost_item(tool.Ifc, tool.Cost, cost_item_id=self.cost_item)
+        if dependents:
+            schedules = len(tool.Cost.group_cost_items_by_schedule(dependents))
+            self.report(
+                {"INFO"},
+                f"Detached {len(dependents)} cost item(s) across {schedules} schedule(s) "
+                "that used this as a rate; they keep their current values.",
+            )
 
 
 class EnableEditingCostItem(bpy.types.Operator, tool.Ifc.Operator):

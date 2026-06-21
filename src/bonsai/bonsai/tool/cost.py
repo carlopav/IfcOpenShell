@@ -935,6 +935,46 @@ class Cost(bonsai.core.tool.Cost):
                 return assignment.RelatingControl
 
     @classmethod
+    def get_rate_dependent_cost_items(
+        cls, cost_rate: ifcopenshell.entity_instance
+    ) -> list[ifcopenshell.entity_instance]:
+        """Cost items that borrow their values from this rate (rate.Controls)."""
+        return ifcopenshell.util.cost.get_rate_dependent_cost_items(cost_rate)
+
+    @classmethod
+    def get_controlled_cost_items_in_subtree(
+        cls, cost_item: ifcopenshell.entity_instance
+    ) -> list[ifcopenshell.entity_instance]:
+        """Dependents controlled by this cost item or any of its descendants."""
+        items = [cost_item] + ifcopenshell.util.cost.get_nested_cost_items(cost_item, is_deep=True)
+        dependents = []
+        for item in items:
+            dependents.extend(cls.get_rate_dependent_cost_items(item))
+        return dependents
+
+    @classmethod
+    def group_cost_items_by_schedule(
+        cls, cost_items: list[ifcopenshell.entity_instance]
+    ) -> list[tuple[str, int]]:
+        """Group cost items by their owning IfcCostSchedule name, with counts."""
+        counts: dict[str, int] = {}
+        for cost_item in cost_items:
+            schedule = ifcopenshell.util.cost.get_cost_schedule(cost_item)
+            name = (schedule.Name or "Unnamed") if schedule else "Unscheduled"
+            counts[name] = counts.get(name, 0) + 1
+        return sorted(counts.items())
+
+    @classmethod
+    def get_schedule_rate_dependents(
+        cls, cost_schedule: ifcopenshell.entity_instance
+    ) -> list[ifcopenshell.entity_instance]:
+        """Cost items elsewhere that borrow from any rate in this schedule."""
+        dependents = []
+        for cost_item in ifcopenshell.util.cost.get_schedule_cost_items(cost_schedule):
+            dependents.extend(cls.get_rate_dependent_cost_items(cost_item))
+        return dependents
+
+    @classmethod
     def load_product_cost_items(cls, product: ifcopenshell.entity_instance) -> None:
         props = cls.get_cost_props()
         props.is_cost_update_enabled = False

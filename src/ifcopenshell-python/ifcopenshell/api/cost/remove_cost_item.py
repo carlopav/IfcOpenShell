@@ -28,6 +28,15 @@ def remove_cost_item(file: ifcopenshell.file, cost_item: ifcopenshell.entity_ins
     however the related resources, products, and tasks themselves are
     retained.
 
+    If the cost item (or any of its descendants) is used as a rate by other
+    cost items - i.e. it is the ``RelatingControl`` of an
+    ``IfcRelAssignsToControl`` whose related objects borrow its cost values
+    (see :func:`ifcopenshell.api.cost.assign_cost_value`) - those dependents are
+    detached first (see :func:`ifcopenshell.api.cost.detach_cost_rate`): each
+    keeps a private copy of its current values and is unlinked, so it is never
+    left referencing a deleted rate or silently sharing values with its former
+    siblings.
+
     :param cost_item: The IfcCostItem entity you want to remove
     :return: None
 
@@ -39,6 +48,12 @@ def remove_cost_item(file: ifcopenshell.file, cost_item: ifcopenshell.entity_ins
         item = ifcopenshell.api.cost.add_cost_item(model, cost_schedule=schedule)
         ifcopenshell.api.cost.remove_cost_item(model, cost_item=item)
     """
+    # Detach any cost items that borrow their values from this one (i.e. use it
+    # as a rate) so they keep a private copy of their values and are unlinked.
+    for rel in cost_item.Controls or []:
+        for related_object in list(rel.RelatedObjects):
+            if related_object.is_a("IfcCostItem"):
+                ifcopenshell.api.cost.detach_cost_rate(file, cost_item=related_object)
     # TODO: do a deep purge
     for inverse in file.get_inverse(cost_item):
         if inverse.is_a("IfcRelNests"):
@@ -51,12 +66,20 @@ def remove_cost_item(file: ifcopenshell.file, cost_item: ifcopenshell.entity_ins
                 if history:
                     ifcopenshell.util.element.remove_deep2(file, history)
         elif inverse.is_a("IfcRelAssignsToControl"):
-            if len(inverse.RelatedObjects) >= 2:
+            if inverse.RelatingControl == cost_item:
+                # Any remaining controlled objects (e.g. products) are simply
+                # unlinked; cost-item dependents were detached above.
+                history = inverse.OwnerHistory
+                file.remove(inverse)
+                if history:
+                    ifcopenshell.util.element.remove_deep2(file, history)
+            elif len(inverse.RelatedObjects) >= 2:
                 continue
-            history = inverse.OwnerHistory
-            file.remove(inverse)
-            if history:
-                ifcopenshell.util.element.remove_deep2(file, history)
+            else:
+                history = inverse.OwnerHistory
+                file.remove(inverse)
+                if history:
+                    ifcopenshell.util.element.remove_deep2(file, history)
     history = cost_item.OwnerHistory
     file.remove(cost_item)
     if history:
