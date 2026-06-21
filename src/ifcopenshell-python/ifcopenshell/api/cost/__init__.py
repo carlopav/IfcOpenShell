@@ -45,6 +45,7 @@ from .remove_cost_item import remove_cost_item
 from .remove_cost_item_quantity import remove_cost_item_quantity
 from .remove_cost_schedule import remove_cost_schedule
 from .remove_cost_value import remove_cost_value
+from .sync_cost_rate import sync_cost_rate
 from .unassign_cost_item_quantity import unassign_cost_item_quantity
 
 wrap_usecases(__path__, __name__)
@@ -70,5 +71,6 @@ __all__ = [
     "remove_cost_item_quantity",
     "remove_cost_schedule",
     "remove_cost_value",
+    "sync_cost_rate",
     "unassign_cost_item_quantity",
 ]

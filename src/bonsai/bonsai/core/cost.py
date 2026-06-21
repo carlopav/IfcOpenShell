@@ -215,6 +215,26 @@ def assign_cost_value(
         ifc.run("control.assign_control", relating_control=cost_rate, related_objects=[cost_item])
 
 
+def sync_cost_rate_dependents(
+    ifc: type[tool.Ifc],
+    cost: type[tool.Cost],
+    cost_rate: ifcopenshell.entity_instance,
+    sync_values: bool = True,
+    sync_name: bool = True,
+    sync_description: bool = True,
+    sync_identification: bool = False,
+) -> None:
+    ifc.run(
+        "cost.sync_cost_rate",
+        cost_rate=cost_rate,
+        sync_values=sync_values,
+        sync_name=sync_name,
+        sync_description=sync_description,
+        sync_identification=sync_identification,
+    )
+    cost.load_cost_schedule_tree()
+
+
 def detach_cost_rate(
     ifc: type[tool.Ifc], cost: type[tool.Cost], cost_item: ifcopenshell.entity_instance
 ) -> dict[ifcopenshell.entity_instance, ifcopenshell.entity_instance]:

@@ -30,6 +30,67 @@ import bonsai.core.cost as core
 import bonsai.tool as tool
 
 
+def sync_rate_dependents_after_edit(rate, changed_fields):
+    """Re-share a rate's values onto its dependents, then prompt to propagate Name/Description."""
+    if rate is None or not rate.is_a("IfcCostItem"):
+        return
+    if not tool.Cost.get_rate_dependent_cost_items(rate):
+        return
+    core.sync_cost_rate_dependents(
+        tool.Ifc, tool.Cost, cost_rate=rate, sync_name=False, sync_description=False
+    )
+    bpy.ops.bim.sync_cost_rate_dependents(
+        "INVOKE_DEFAULT", cost_rate=rate.id(), changed_fields=changed_fields
+    )
+
+
+def get_active_dependent_cost_item():
+    """The active cost item if it borrows its values from a rate, else None."""
+    cost_item = tool.Cost.get_active_cost_item()
+    if cost_item and tool.Cost.get_assigned_rate_cost_item(cost_item):
+        return cost_item
+    return None
+
+
+def draw_detach_warning(layout, cost_item):
+    """Warn that editing a dependent will detach it from its rate."""
+    rate = tool.Cost.get_assigned_rate_cost_item(cost_item)
+    layout.label(text="This cost item borrows its values from a rate:", icon="ERROR")
+    if rate:
+        layout.label(text=f"Rate: {rate.Name or 'Unnamed'}")
+        schedule = tool.Cost.get_cost_schedule(rate)
+        if schedule:
+            layout.label(text=f"Schedule of rates: {schedule.Name or 'Unnamed'}")
+    layout.separator()
+    layout.label(text="Editing it will detach it from the rate: the link will be")
+    layout.label(text="removed and this item will keep a private copy of the values.")
+
+
+def detach_active_dependent(cost_value=None):
+    """Detach the active cost item from its rate if needed; return cost_value remapped to its copy."""
+    cost_item = get_active_dependent_cost_item()
+    if not cost_item:
+        return cost_value
+    mapping = core.detach_cost_rate(tool.Ifc, tool.Cost, cost_item=cost_item)
+    if cost_value is not None:
+        return mapping.get(cost_value, cost_value)
+    return cost_value
+
+
+class DetachRateOnValueEditMixin:
+    """Prompt to detach a dependent cost item from its rate before editing its values."""
+
+    def invoke(self, context, event):
+        if get_active_dependent_cost_item():
+            return context.window_manager.invoke_props_dialog(self, width=460)
+        return self.execute(context)
+
+    def draw(self, context):
+        cost_item = tool.Cost.get_active_cost_item()
+        if cost_item:
+            draw_detach_warning(self.layout, cost_item)
+
+
 class AddCostSchedule(bpy.types.Operator, tool.Ifc.Operator):
     bl_idname = "bim.add_cost_schedule"
     bl_label = "Add Cost Schedule"
@@ -277,8 +338,23 @@ class EditCostItem(bpy.types.Operator, tool.Ifc.Operator):
     bl_label = "Edit Cost Item"
     bl_options = {"REGISTER", "UNDO"}
 
+    def invoke(self, context, event):
+        cost_item = get_active_dependent_cost_item()
+        if cost_item and tool.Cost.cost_item_name_or_description_changed(cost_item):
+            return context.window_manager.invoke_props_dialog(self, width=460)
+        return self.execute(context)
+
+    def draw(self, context):
+        cost_item = tool.Cost.get_active_cost_item()
+        if cost_item:
+            draw_detach_warning(self.layout, cost_item)
+
     def _execute(self, context):
+        cost_item = tool.Cost.get_active_cost_item()
+        if get_active_dependent_cost_item() and tool.Cost.cost_item_name_or_description_changed(cost_item):
+            core.detach_cost_rate(tool.Ifc, tool.Cost, cost_item=cost_item)
         core.edit_cost_item(tool.Ifc, tool.Cost)
+        sync_rate_dependents_after_edit(cost_item, "Name / Description")
         return {"FINISHED"}
 
 
@@ -464,7 +540,7 @@ class EditCostItemQuantity(bpy.types.Operator, tool.Ifc.Operator):
         )
 
 
-class AddCostValue(bpy.types.Operator, tool.Ifc.Operator):
+class AddCostValue(DetachRateOnValueEditMixin, bpy.types.Operator, tool.Ifc.Operator):
     bl_idname = "bim.add_cost_value"
     bl_label = "Add Cost Value"
     bl_options = {"REGISTER", "UNDO"}
@@ -473,17 +549,20 @@ class AddCostValue(bpy.types.Operator, tool.Ifc.Operator):
     cost_category: bpy.props.StringProperty()
 
     def _execute(self, context):
+        parent = tool.Ifc.get().by_id(self.parent)
+        detach_active_dependent()
         core.add_cost_value(
             tool.Ifc,
             tool.Cost,
-            parent=tool.Ifc.get().by_id(self.parent),
+            parent=parent,
             cost_type=self.cost_type,
             cost_category=self.cost_category,
         )
+        sync_rate_dependents_after_edit(parent, "Cost value")
         return {"FINISHED"}
 
 
-class RemoveCostItemValue(bpy.types.Operator, tool.Ifc.Operator):
+class RemoveCostItemValue(DetachRateOnValueEditMixin, bpy.types.Operator, tool.Ifc.Operator):
     bl_idname = "bim.remove_cost_value"
     bl_label = "Remove Cost Item Value"
     bl_options = {"REGISTER", "UNDO"}
@@ -491,9 +570,10 @@ class RemoveCostItemValue(bpy.types.Operator, tool.Ifc.Operator):
     cost_value: bpy.props.IntProperty()
 
     def _execute(self, context):
-        core.remove_cost_value(
-            tool.Ifc, parent=tool.Ifc.get().by_id(self.parent), cost_value=tool.Ifc.get().by_id(self.cost_value)
-        )
+        parent = tool.Ifc.get().by_id(self.parent)
+        cost_value = detach_active_dependent(tool.Ifc.get().by_id(self.cost_value))
+        core.remove_cost_value(tool.Ifc, parent=parent, cost_value=cost_value)
+        sync_rate_dependents_after_edit(parent, "Cost value")
         return {"FINISHED"}
 
 
@@ -529,26 +609,80 @@ class EnableEditingCostItemValueFormula(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class EditCostItemValueFormula(bpy.types.Operator, tool.Ifc.Operator):
+class EditCostItemValueFormula(DetachRateOnValueEditMixin, bpy.types.Operator, tool.Ifc.Operator):
     bl_idname = "bim.edit_cost_value_formula"
     bl_label = "Edit Cost Value Formula"
     bl_options = {"REGISTER", "UNDO"}
     cost_value: bpy.props.IntProperty()
 
     def _execute(self, context):
-        core.edit_cost_item_value_formula(tool.Ifc, tool.Cost, cost_value=tool.Ifc.get().by_id(self.cost_value))
+        cost_value = detach_active_dependent(tool.Ifc.get().by_id(self.cost_value))
+        core.edit_cost_item_value_formula(tool.Ifc, tool.Cost, cost_value=cost_value)
+        sync_rate_dependents_after_edit(tool.Cost.get_cost_item_for_cost_value(cost_value), "Cost value")
         return {"FINISHED"}
 
 
-class EditCostItemValue(bpy.types.Operator, tool.Ifc.Operator):
+class EditCostItemValue(DetachRateOnValueEditMixin, bpy.types.Operator, tool.Ifc.Operator):
     bl_idname = "bim.edit_cost_value"
     bl_label = "Edit Cost Value"
     bl_options = {"REGISTER", "UNDO"}
     cost_value: bpy.props.IntProperty()
 
     def _execute(self, context):
-        core.edit_cost_value(tool.Ifc, tool.Cost, cost_value=tool.Ifc.get().by_id(self.cost_value))
+        cost_value = detach_active_dependent(tool.Ifc.get().by_id(self.cost_value))
+        core.edit_cost_value(tool.Ifc, tool.Cost, cost_value=cost_value)
+        sync_rate_dependents_after_edit(tool.Cost.get_cost_item_for_cost_value(cost_value), "Cost value")
         return {"FINISHED"}
+
+
+class SyncCostRateDependents(bpy.types.Operator, tool.Ifc.Operator):
+    bl_idname = "bim.sync_cost_rate_dependents"
+    bl_label = "Update Cost Items Using This Rate"
+    bl_description = "Propagate this schedule of rates entry to the cost items that use it"
+    bl_options = {"REGISTER", "UNDO"}
+    cost_rate: bpy.props.IntProperty()
+    changed_fields: bpy.props.StringProperty()
+    should_update_identification: bpy.props.BoolProperty(
+        name="Should update Identification",
+        description="Also overwrite each dependent cost item's Identification with the rate's value",
+        default=False,
+    )
+
+    if TYPE_CHECKING:
+        cost_rate: int
+        changed_fields: str
+        should_update_identification: bool
+
+    def invoke(self, context, event):
+        cost_rate = tool.Ifc.get().by_id(self.cost_rate)
+        if not tool.Cost.get_rate_dependent_cost_items(cost_rate):
+            return self.execute(context)
+        return context.window_manager.invoke_props_dialog(self, width=460)
+
+    def _execute(self, context):
+        core.sync_cost_rate_dependents(
+            tool.Ifc,
+            tool.Cost,
+            cost_rate=tool.Ifc.get().by_id(self.cost_rate),
+            sync_identification=self.should_update_identification,
+        )
+        return {"FINISHED"}
+
+    def draw(self, context):
+        layout = self.layout
+        cost_rate = tool.Ifc.get().by_id(self.cost_rate)
+        layout.label(text="A schedule of rates entry was edited.", icon="INFO")
+        if self.changed_fields:
+            layout.label(text=f"Changed: {self.changed_fields}")
+        layout.separator()
+        layout.label(text="Cost items using this rate (grouped by schedule):")
+        for name, count in tool.Cost.group_cost_items_by_schedule(
+            tool.Cost.get_rate_dependent_cost_items(cost_rate)
+        ):
+            layout.label(text=f"{name}: {count}", icon="DOT")
+        layout.separator()
+        layout.prop(self, "should_update_identification")
+        layout.label(text="Name, Description and cost value are always synchronised.")
 
 
 class CopyCostItemValues(bpy.types.Operator, tool.Ifc.Operator):

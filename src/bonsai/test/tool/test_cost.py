@@ -79,6 +79,22 @@ class TestGetRateDependentCostItems(NewFile):
         assert subject.get_rate_dependent_cost_items(item) == []
 
 
+class TestGetCostItemForCostValue(NewFile):
+    def test_resolves_the_rate_owning_a_shared_value(self):
+        ifc = ifcopenshell.file()
+        tool.Ifc.set(ifc)
+        _, rate, value, _ = create_rate_with_dependents(ifc)
+        assert subject.get_cost_item_for_cost_value(value) == rate
+
+    def test_returns_none_when_no_owner_has_dependents(self):
+        ifc = ifcopenshell.file()
+        tool.Ifc.set(ifc)
+        schedule = ifcopenshell.api.cost.add_cost_schedule(ifc, name="BoQ", predefined_type="BUDGET")
+        item = ifcopenshell.api.cost.add_cost_item(ifc, cost_schedule=schedule)
+        value = ifcopenshell.api.cost.add_cost_value(ifc, parent=item)
+        assert subject.get_cost_item_for_cost_value(value) is None
+
+
 class TestGetControlledCostItemsInSubtree(NewFile):
     def test_detects_dependents_controlled_by_the_item(self):
         ifc = ifcopenshell.file()

@@ -942,6 +942,18 @@ class Cost(bonsai.core.tool.Cost):
         return ifcopenshell.util.cost.get_rate_dependent_cost_items(cost_rate)
 
     @classmethod
+    def get_cost_item_for_cost_value(
+        cls, cost_value: ifcopenshell.entity_instance
+    ) -> Union[ifcopenshell.entity_instance, None]:
+        """Return the rate (owner with dependents) sharing this cost value, if any."""
+        for inverse in tool.Ifc.get().get_inverse(cost_value):
+            if not inverse.is_a("IfcCostItem"):
+                continue
+            if cost_value in (inverse.CostValues or ()) and cls.get_rate_dependent_cost_items(inverse):
+                return inverse
+        return None
+
+    @classmethod
     def get_controlled_cost_items_in_subtree(
         cls, cost_item: ifcopenshell.entity_instance
     ) -> list[ifcopenshell.entity_instance]:
@@ -973,6 +985,15 @@ class Cost(bonsai.core.tool.Cost):
         for cost_item in ifcopenshell.util.cost.get_schedule_cost_items(cost_schedule):
             dependents.extend(cls.get_rate_dependent_cost_items(cost_item))
         return dependents
+
+    @classmethod
+    def cost_item_name_or_description_changed(cls, cost_item: ifcopenshell.entity_instance) -> bool:
+        """Whether the pending cost item edit changes Name or Description."""
+        attributes = cls.get_cost_item_attributes()
+        return any(
+            name in attributes and attributes[name] != getattr(cost_item, name)
+            for name in ("Name", "Description")
+        )
 
     @classmethod
     def load_product_cost_items(cls, product: ifcopenshell.entity_instance) -> None:

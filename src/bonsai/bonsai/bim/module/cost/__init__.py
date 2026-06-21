@@ -82,6 +82,7 @@ classes = (
     operator.SelectCostItemProducts,
     operator.SelectCostScheduleProducts,
     operator.SelectUnassignedProducts,
+    operator.SyncCostRateDependents,
     operator.UnassignCostItemQuantity,
     operator.UnassignCostItemType,
     operator.GenerateCostScheduleBrowser,
