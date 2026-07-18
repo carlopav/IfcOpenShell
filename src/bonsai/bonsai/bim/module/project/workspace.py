@@ -33,6 +33,7 @@ class ExploreTool(bpy.types.WorkSpaceTool):
     bl_icon = os.path.join(os.path.dirname(__file__), "ops.authoring.explore")
     bl_widget = None
     bl_keymap = (
+        ("bim.clip_aware_select", {"type": "LEFTMOUSE", "value": "CLICK"}, None),
         ("bim.query_linked_element", {"type": "RIGHTMOUSE", "value": "PRESS"}, None),
         ("bim.explore_hotkey", {"type": "W", "value": "PRESS", "shift": True}, {"properties": [("hotkey", "S_W")]}),
         ("bim.explore_hotkey", {"type": "C", "value": "PRESS", "shift": True}, {"properties": [("hotkey", "S_C")]}),
@@ -46,6 +47,8 @@ class ExploreTool(bpy.types.WorkSpaceTool):
     )
 
     def draw_settings(context: bpy.types.Context, layout: bpy.types.UILayout, ws_tool) -> None:
+        row = layout.row(align=True)
+        row.label(text="Select (clip-aware in Plan/Section/RCP)", icon="MOUSE_LMB")
         row = layout.row(align=True)
         row.label(text="Query Object", icon="MOUSE_RMB")
         row = layout.row(align=True)

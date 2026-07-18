@@ -41,6 +41,7 @@ classes = (
     operator.ChangeLibraryElement,
     operator.ClearMeasurement,
     operator.ClearRecentIFCProjects,
+    operator.ClipAwareSelect,
     operator.CreateClippingPlane,
     operator.CreateProject,
     operator.DisableCulling,

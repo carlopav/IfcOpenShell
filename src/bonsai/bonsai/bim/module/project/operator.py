@@ -2660,6 +2660,138 @@ class QueryLinkedElement(bpy.types.Operator):
         return self.execute(context)
 
 
+class ClipAwareSelect(bpy.types.Operator):
+    bl_idname = "bim.clip_aware_select"
+    bl_label = "Clip Aware Select"
+    bl_description = (
+        "Click select that ignores geometry hidden behind a plan/section/RCP drawing's cut plane.\n\n"
+        "Only active while viewing through a plan/section/RCP drawing's camera. "
+        "Falls back to the native click select otherwise."
+    )
+    bl_options = {"REGISTER", "UNDO"}
+
+    epsilon: bpy.props.FloatProperty(name="Bounce Epsilon", default=1e-4, precision=6)
+    max_bounces: bpy.props.IntProperty(name="Max Bounces", default=20, min=1)
+
+    if TYPE_CHECKING:
+        epsilon: float
+        max_bounces: int
+
+    @classmethod
+    def poll(cls, context):
+        assert context.area
+        return context.area.type == "VIEW_3D"
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        # Always let the native select run first: its GPU id-buffer picking correctly
+        # grabs thin 2D geometry and annotations that a 3D raycast can't hit. We only
+        # override its result when it lands on a solid construction element, which is
+        # the case where native picking can grab the object behind the cut plane.
+        bpy.ops.view3d.select("INVOKE_DEFAULT", extend=event.shift, deselect_all=not event.shift)
+
+        clip_plane = self.get_drawing_clip_plane(context)
+        if clip_plane is None:
+            return {"FINISHED"}
+
+        active = context.active_object
+        element = tool.Ifc.get_entity(active) if active else None
+        if not active or active.type != "MESH" or not element or element.is_a("IfcAnnotation"):
+            return {"FINISHED"}
+
+        self.plane_co, self.plane_no, self.drawing = clip_plane
+        self.mouse_x = event.mouse_region_x
+        self.mouse_y = event.mouse_region_y
+        return self.execute(context)
+
+    @staticmethod
+    def get_drawing_clip_plane(
+        context: bpy.types.Context,
+    ) -> Union[tuple[Vector, Vector, ifcopenshell.entity_instance], None]:
+        """Near clip plane (point, forward normal) and drawing entity of the active plan/section/RCP camera.
+
+        Returns None if the viewport isn't locked to a plan/section/RCP drawing's camera.
+        """
+        rv3d = context.region_data
+        assert context.scene
+        camera = context.scene.camera
+        if not rv3d or rv3d.view_perspective != "CAMERA" or not camera:
+            return None
+        drawing = tool.Ifc.get_entity(camera)
+        if not drawing:
+            return None
+        target_view = tool.Drawing.get_drawing_target_view(drawing)
+        if target_view not in ("PLAN_VIEW", "REFLECTED_PLAN_VIEW", "SECTION_VIEW"):
+            return None
+        assert isinstance(camera.data, bpy.types.Camera)
+        forward = -(camera.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+        forward.normalize()
+        plane_co = camera.matrix_world.translation + forward * camera.data.clip_start
+        return plane_co, forward, drawing
+
+    def execute(self, context) -> set["rna_enums.OperatorReturnItems"]:
+        if not hasattr(self, "mouse_x"):
+            # Called directly (e.g. redo panel / tool-system trial call) without invoke() - nothing to do.
+            return {"CANCELLED"}
+
+        assert context.region and context.region_data
+        region = context.region
+        rv3d = context.region_data
+        coord = (self.mouse_x, self.mouse_y)
+        origin = region_2d_to_origin_3d(region, rv3d, coord)
+        direction = region_2d_to_vector_3d(region, rv3d, coord)
+        if not rv3d.is_perspective:
+            # For ortho views the returned origin sits at the view's focus depth, not before
+            # the scene - push it far back along -direction so nothing in front is missed.
+            origin = origin - direction * 10000.0
+
+        # Temporary debug trace for field-testing - remove once validated.
+        print(
+            f"[clip_aware_select] --- click, file={tool.Ifc.get_path()} drawing={self.drawing.GlobalId} "
+            f"plane_co={tuple(self.plane_co)} plane_no={tuple(self.plane_no)}"
+        )
+
+        print(f"[clip_aware_select]   ray origin={tuple(origin)} direction={tuple(direction)}")
+
+        hit_obj = None
+        # Object we most recently entered (front-face hit) and haven't exited yet - i.e. what
+        # we're "inside" of as the ray marches toward the plane. Needed because adjoining/
+        # overlapping objects at wall junctions can present a closer surface before the object
+        # we're actually still inside of reaches its own far face.
+        inside_of = None
+        bounce_count = 0
+        for bounce_count in range(1, self.max_bounces + 1):
+            hit, location, normal, face_index, obj, matrix = tool.Blender.ray_cast_scene(context, origin, direction)
+            if not hit:
+                print(f"[clip_aware_select]   #{bounce_count} no hit")
+                break
+            element = tool.Ifc.get_entity(obj)
+            guid = element.GlobalId if element else None
+            side = (location - self.plane_co).dot(self.plane_no)
+            entering = direction.dot(normal) < 0
+            tag = f"obj={obj.name} guid={guid} loc={tuple(location)} side={side:.5f} entering={entering}"
+            if not obj.visible_get() or obj.hide_select:
+                print(f"[clip_aware_select]   #{bounce_count} {tag} SKIP (hidden/unselectable)")
+                origin = location + direction * self.epsilon
+                continue
+            if side >= 0:
+                hit_obj = inside_of if inside_of is not None else obj
+                print(f"[clip_aware_select]   #{bounce_count} {tag} ACCEPT (inside_of={inside_of.name if inside_of else None})")
+                break
+            if entering:
+                inside_of = obj
+            elif inside_of is obj:
+                inside_of = None
+            print(f"[clip_aware_select]   #{bounce_count} {tag} behind plane, bounce")
+            origin = location + direction * self.epsilon
+
+        print(f"[clip_aware_select] bounces={bounce_count} selected={hit_obj.name if hit_obj else None}")
+
+        bpy.ops.object.select_all(action="DESELECT")
+        if hit_obj:
+            tool.Blender.set_active_object(hit_obj)
+        return {"FINISHED"}
+
+
 class HideQueriedLinkedElement(bpy.types.Operator):
     bl_idname = "bim.hide_queried_linked_element"
     bl_label = "Hide Queried Linked Element"
