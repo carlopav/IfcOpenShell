@@ -374,8 +374,13 @@ class Raycast(bonsai.core.tool.Raycast):
             loc = Vector((0, 0, 0))
 
         snap_obj._ensure_bvh()
+        # Pad the box test by the world-space snap threshold so vertices at the
+        # object's extremities (whose BVH leaf boxes the ray can graze just
+        # outside) stay snap candidates, matching the 2D screen-space check below.
+        # The 1.5 factor makes extremity vertices a touch stickier.
+        box_margin = cls.calculate_snap_threshold(rv3d.view_distance) * 1.5
         intersected = snap_obj.raycast_boxes(
-            context, event, snap_obj.root, intersected=[], rays=(ray_origin, ray_direction)
+            context, event, snap_obj.root, intersected=[], rays=(ray_origin, ray_direction), margin=box_margin
         )
 
         # Collect edges from intersected BVH boxes
@@ -1134,7 +1139,12 @@ class SnapObj:
         self.split_box(parent.child_b, depth + 1)
 
     def raycast_box(
-        self, context: bpy.types.Context, event: bpy.types.Event, node: TreeNode, rays: tuple[Vector, Vector]
+        self,
+        context: bpy.types.Context,
+        event: bpy.types.Event,
+        node: TreeNode,
+        rays: tuple[Vector, Vector],
+        margin: float = 0.0,
     ) -> bool:
         """
         Raycast bounding box.
@@ -1144,13 +1154,16 @@ class SnapObj:
             event: Blender event.
             node: a TreeNode instance.
             rays: tuple containing ray origin and ray direction
+            margin: world-space padding added around the box so a ray passing
+                just outside it (within the snap threshold) still counts as a hit.
 
         Returns:
             True if hits the box or False otherwise.
         """
         box = node.box
-        min_v = box[0]
-        max_v = box[1]
+        margin_v = Vector((margin, margin, margin))
+        min_v = box[0] - margin_v
+        max_v = box[1] + margin_v
         t_min = 0.0
         t_max = float("inf")
         ray_origin, ray_dir = rays
@@ -1217,6 +1230,7 @@ class SnapObj:
         node: TreeNode,
         intersected: Union[TreeNode] = [],
         rays: tuple[Vector, Vector] = (),
+        margin: float = 0.0,
     ) -> Union[TreeNode]:
         """
         Raycast bounding box subdivisions recursively.
@@ -1227,6 +1241,7 @@ class SnapObj:
             node: a TreeNode instance.
             intersected: list of intersected boxes to use in recursion.
             rays: tuple containing ray origin and ray direction
+            margin: world-space padding forwarded to raycast_box.
 
         Returns:
             tuple: a list of TreeNode instances that represent the subdivided boxes hit by the ray cast.
@@ -1235,12 +1250,12 @@ class SnapObj:
             intersected.append(node)
             return intersected
 
-        intersects_a = self.raycast_box(context, event, node.child_a, rays)
-        intersects_b = self.raycast_box(context, event, node.child_b, rays)
+        intersects_a = self.raycast_box(context, event, node.child_a, rays, margin)
+        intersects_b = self.raycast_box(context, event, node.child_b, rays, margin)
         if intersects_a:
-            intersected = self.raycast_boxes(context, event, node.child_a, intersected, rays)
+            intersected = self.raycast_boxes(context, event, node.child_a, intersected, rays, margin)
 
         if intersects_b:
-            intersected = self.raycast_boxes(context, event, node.child_b, intersected, rays)
+            intersected = self.raycast_boxes(context, event, node.child_b, intersected, rays, margin)
 
         return intersected
