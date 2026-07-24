@@ -420,6 +420,15 @@ class Raycast(bonsai.core.tool.Raycast):
         # verts_2d only holds vertices that belong to edges in the BVH boxes the
         # ray hit, and they are already projected to 2D, so there is no need to
         # scan and project every vertex of the object on each mouse move.
+        # Edge-less meshes (e.g. point clouds) carry no edges in the BVH, so
+        # verts_2d is always empty for them; fall back to a full vertex scan.
+        if len(snap_obj.obj.data.edges) == 0:
+            verts_2d = {}
+            for i, v3d in enumerate(snap_obj.verts_3d):
+                v2d = view3d_utils.location_3d_to_region_2d(region, rv3d, v3d)
+                if v2d is not None:
+                    verts_2d[i] = v2d
+
         for i, v2d in verts_2d.items():
             distance = (Vector(mouse_pos) - v2d).length
             if distance <= snap_threshold:
