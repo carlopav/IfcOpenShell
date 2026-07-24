@@ -416,15 +416,11 @@ class Raycast(bonsai.core.tool.Raycast):
 
         snap_threshold = 10.0
 
-        # Check all vertices for proximity to mouse position.
-        # Re-use the 2D projections already computed for edge endpoints.
-        for i, v3d in enumerate(snap_obj.verts_3d):
-            if i in verts_2d:
-                v2d = verts_2d[i]
-            else:
-                v2d = view3d_utils.location_3d_to_region_2d(region, rv3d, v3d)
-                if v2d is None:
-                    continue
+        # Check vertices near the ray for proximity to the mouse position.
+        # verts_2d only holds vertices that belong to edges in the BVH boxes the
+        # ray hit, and they are already projected to 2D, so there is no need to
+        # scan and project every vertex of the object on each mouse move.
+        for i, v2d in verts_2d.items():
             distance = (Vector(mouse_pos) - v2d).length
             if distance <= snap_threshold:
                 snap_point = {
