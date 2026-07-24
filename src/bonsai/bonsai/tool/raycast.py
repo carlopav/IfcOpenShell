@@ -967,17 +967,14 @@ class Raycast(bonsai.core.tool.Raycast):
             return None
         for i, snap_obj in enumerate(cls.snap_objs):
             if obj.name == snap_obj.obj.name:
-                # Handle objects modified while a modal operator is active.
-                # Example: adding a door or window alters the wall geometry.
-                if len(obj.data.vertices) != len(snap_obj.verts_3d):
+                # Rebuild the cache if the object changed while a modal operator
+                # is active (e.g. adding a door/window alters the wall geometry).
+                # A vertex-count or world-matrix change is a cheap staleness
+                # signal, so we avoid re-checking every vertex on each mouse move.
+                if len(obj.data.vertices) != len(snap_obj.verts_3d) or obj.matrix_world != snap_obj.matrix_world:
                     cls.snap_objs.pop(i)
                     snap_obj = SnapObj(obj)
                     cls.snap_objs.append(snap_obj)
-                for v1, v2 in zip(obj.data.vertices, snap_obj.verts_3d):
-                    if (obj.matrix_world @ v1.co) != v2:
-                        cls.snap_objs.pop(i)
-                        snap_obj = SnapObj(obj)
-                        cls.snap_objs.append(snap_obj)
                 return snap_obj
         snap_obj = SnapObj(obj)
         cls.snap_objs.append(snap_obj)
@@ -1015,6 +1012,7 @@ class SnapObj:
         self.obj = obj
         self.root = None
         self._bvh_built = False
+        self.matrix_world = obj.matrix_world.copy()
         self.verts_3d = [obj.matrix_world @ v.co for v in obj.data.vertices]
         self.snap_points = []
 
