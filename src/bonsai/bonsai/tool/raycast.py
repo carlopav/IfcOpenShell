@@ -421,13 +421,17 @@ class Raycast(bonsai.core.tool.Raycast):
 
         snap_threshold = 10.0
 
-        # Check vertices near the ray for proximity to the mouse position.
-        # verts_2d only holds vertices that belong to edges in the BVH boxes the
-        # ray hit, and they are already projected to 2D, so there is no need to
-        # scan and project every vertex of the object on each mouse move.
-        # Edge-less meshes (e.g. point clouds) carry no edges in the BVH, so
-        # verts_2d is always empty for them; fall back to a full vertex scan.
-        if len(snap_obj.obj.data.edges) == 0:
+        # Vertices to test for proximity to the mouse position.
+        # For an edge-only wireframe mesh (e.g. a reference DXF) there can be many
+        # objects with huge vertex counts, so candidates are restricted to
+        # verts_2d (vertices of edges in the BVH boxes the ray hit, already
+        # projected) to avoid a full per-object scan every mouse move.
+        # Solid meshes (with faces) only ever reach here one at a time - the
+        # closest object under the cursor - and edge-less meshes (point clouds)
+        # have no edges in the BVH, so for both we do a full vertex projection,
+        # which keeps snapping accurate at the object's extremities.
+        mesh = snap_obj.obj.data
+        if len(mesh.polygons) > 0 or len(mesh.edges) == 0:
             verts_2d = {}
             for i, v3d in enumerate(snap_obj.verts_3d):
                 v2d = view3d_utils.location_3d_to_region_2d(region, rv3d, v3d)
