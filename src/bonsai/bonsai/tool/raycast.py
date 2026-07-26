@@ -439,6 +439,11 @@ class Raycast(bonsai.core.tool.Raycast):
         selected_edges = {}
         for e in edges:
             p0, p1 = edge_verts[e]
+            # An endpoint can be None when the edge is partly off-screen and no
+            # valid region-border intersection was found; it can't be tested in
+            # 2D, so skip it instead of crashing on the unpack below.
+            if p0 is None or p1 is None:
+                continue
             p0x, p0y = p0
             p1x, p1y = p1
             px, py = mouse_pos
