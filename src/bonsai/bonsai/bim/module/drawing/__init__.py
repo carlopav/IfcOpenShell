@@ -22,7 +22,7 @@ import bpy
 
 import bonsai.tool as tool
 
-from . import gizmos, handler, operator, prop, ui, workspace
+from . import dimension_vertex_gizmos, gizmos, handler, operator, prop, ui, workspace
 
 classes = (
     operator.ActivateDrawing,
@@ -172,6 +172,9 @@ classes = (
     gizmos.UglyDotGizmo,
     gizmos.ExtrusionGuidesGizmo,
     gizmos.ExtrusionWidget,
+    dimension_vertex_gizmos.MoveDimensionVertex,
+    dimension_vertex_gizmos.GizmoDimensionVertex,
+    dimension_vertex_gizmos.GizmoDimensionVertexEdition,
     workspace.LaunchAnnotationTypeManager,
     workspace.Hotkey,
 )
